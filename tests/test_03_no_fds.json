@@ -1,0 +1,8 @@
+{
+  "relationName": "R",
+  "attributes": ["A", "B", "C"],
+  "functionalDependencies": []
+}
+
+
+

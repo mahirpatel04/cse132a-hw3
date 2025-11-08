@@ -1,0 +1,11 @@
+{
+  "relationName": "R",
+  "attributes": ["A", "B", "C", "D"],
+  "functionalDependencies": [
+    { "left": ["A"], "right": ["B"] },
+    { "left": ["C"], "right": ["D"] }
+  ]
+}
+
+
+
