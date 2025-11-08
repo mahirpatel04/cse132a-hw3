@@ -2,3 +2,6 @@
 expected/
 autograder.py
 run_autograder
+autograder.zip
+Makefile
+setup.sh
