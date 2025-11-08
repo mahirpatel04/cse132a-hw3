@@ -1,4 +1,4 @@
-# CSE 132A Homework 3 — 3NF and BCNF
+# CSE 132A Homework 3 - 3NF and BCNF
 
 Version: 2.0.0
 
