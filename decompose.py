@@ -11,14 +11,101 @@ No fancy Python features, just lists and dicts.
 import json
 import sys
 from pathlib import Path
+# need this for the find_candidate_keys function
+from itertools import combinations
 
 # Keep this version as-is
 ASSIGNMENT_VERSION = (2, 0, 0)  # v2.0.0
 
 
+def compute_closure(attrs, fds):
+    """Little hlper function used to get closure of a set of attributes under given FDs"""
+    
+    
+    closure = set(attrs)
+    changed = True
+    
+    while changed:
+        
+        changed = False
+        for fd in fds:
+            left_set = set(fd["left"])
+            if left_set.issubset(closure) and fd["right"][0] not in closure:
+                closure.add(fd["right"][0])
+                changed = True
+    return closure
+
+
+def is_superkey(attrs, all_attrs, fds):
+    return compute_closure(attrs, fds) == set(all_attrs)
+
+
+def find_candidate_keys(attributes, fds):
+    """Find all candidate keys using a bottom-up approach."""
+    
+    
+    # Try sets of increasing size
+    for size in range(1, len(attributes) + 1):
+        candidates = []
+        for combo in combinations(attributes, size):
+            if is_superkey(combo, attributes, fds):
+                # Check if it's minimal (no subset is a superkey)
+                is_minimal = True
+                for smaller_size in range(1, size):
+                    for sub_combo in combinations(combo, smaller_size):
+                        if is_superkey(sub_combo, attributes, fds):
+                            is_minimal = False
+                            break
+                    if not is_minimal:
+                        break
+                if is_minimal:
+                    candidates.append(list(combo))
+        if candidates:
+            return candidates
+    
+    # If there is nokey found, all attributes form the key
+    return [attributes]
+
+
+def minimal_cover(fds, attributes):
+    # Step 1: Make right sides singletons (already done in input)
+    result = [{"left": fd["left"][:], "right": fd["right"][:]} for fd in fds]
+    
+    # Step 2: Remove redundant attributes from left sides
+    changed = True
+    while changed:
+        changed = False
+        for fd in result:
+            if len(fd["left"]) > 1:
+                for attr in fd["left"][:]:
+                    # Try removing this attribute
+                    left_without = [a for a in fd["left"] if a != attr]
+                    if not left_without:
+                        continue
+                    
+                    # Check if we can still derive right side
+                    closure = compute_closure(left_without, result)
+                    if fd["right"][0] in closure:
+                        fd["left"] = left_without
+                        changed = True
+                        break
+    
+    # Step 3: Remove redundant FDs
+    final_result = []
+    for i, fd in enumerate(result):
+        # Create FD list without this FD
+        others = result[:i] + result[i+1:]
+        # Check if this FD is derivable from others
+        closure = compute_closure(fd["left"], others)
+        if fd["right"][0] not in closure:
+            final_result.append(fd)
+    
+    return final_result
+
+
 def solve_3nf(relation_name, attributes, functional_dependencies):
     """
-    TODO: Return the 3NF decomposition.
+    Return the 3NF decomposition using synthesis algorithm.
 
     Inputs:
       - relation_name: a string like "R"
@@ -31,13 +118,96 @@ def solve_3nf(relation_name, attributes, functional_dependencies):
       A list of relations. Each relation is a list of attribute names.
       Example: [["A","B"], ["B","C"]]
     """
-    # Replace the code below with your own solution.
-    raise NotImplementedError("Please implement solve_3nf()")
+    # Handle empty FD case
+    if not functional_dependencies:
+        return [attributes[:]]
+    
+    # Step 1: Find minimal cover
+    min_cover = minimal_cover(functional_dependencies, attributes)
+    
+    # Step 2: Create a relation for each FD
+    relations = []
+    for fd in min_cover:
+        relation = sorted(list(set(fd["left"] + fd["right"])))
+        relations.append(relation)
+    
+    # Step 3: Remove redundant relations (those contained in others)
+    non_redundant = []
+    for i, r1 in enumerate(relations):
+        is_subset = False
+        
+        for j, r2 in enumerate(relations):
+            if i != j and set(r1).issubset(set(r2)):
+                is_subset = True
+                break
+            
+            
+        if not is_subset:
+            non_redundant.append(r1)
+    
+    # Step 4: Ensure at least one relation contains a candidate key
+    keys = find_candidate_keys(attributes, functional_dependencies)
+    has_key = False
+    for relation in non_redundant:
+        for key in keys:
+            
+            if set(key).issubset(set(relation)):
+                has_key = True
+                break
+        if has_key:
+            break
+    
+    if not has_key and keys:
+        # Add a relation with a candidate key
+        non_redundant.append(sorted(keys[0]))
+    
+    return non_redundant
+
+def get_applicable_fds(relation_attrs, fds):
+        attr_set = set(relation_attrs)
+        applicable = []
+        for fd in fds:
+            if set(fd["left"]).issubset(attr_set) and fd["right"][0] in attr_set:
+                applicable.append(fd)
+        return applicable
+    
+def find_bcnf_violation(relation_attrs, fds):
+        """Find a BCNF violation in the relation, if any."""
+        applicable_fds = get_applicable_fds(relation_attrs, fds)
+        for fd in applicable_fds:
+
+            if not is_superkey(fd["left"], relation_attrs, applicable_fds):
+                return fd
+        return None
+    
+def decompose_relation(relation_attrs, fds):
+    """Recursively decompose a relation to BCNF."""
+    violation = find_bcnf_violation(relation_attrs, fds)
+    if violation is None:
+        # Already in the BCNF
+        return [sorted(relation_attrs)]
+    
+    # Decompose based on the violation
+    l = violation["left"]
+    r = violation["right"]
+    
+    # R1 = left + right
+    r1_attrs = list(set(l + r))
+    
+    # R2 = relation_attrs - right
+    r2_attrs = [a for a in relation_attrs if a not in r]
+    
+    # Recursively decompose
+    result = []
+    result.extend(decompose_relation(r1_attrs, fds))
+    result.extend(decompose_relation(r2_attrs, fds))
+    
+    return result
 
 
 def solve_bcnf(relation_name, attributes, functional_dependencies):
     """
-    TODO: Return the BCNF decomposition.
+    Return the BCNF decomposition using the decomposition algorithm.
 
     Inputs:
       - relation_name: a string like "R"
@@ -50,8 +220,13 @@ def solve_bcnf(relation_name, attributes, functional_dependencies):
       A list of relations. Each relation is a list of attribute names.
       Example: [["A","B"], ["B","C"]]
     """
-    # Replace the code below with your own solution.
-    raise NotImplementedError("Please implement solve_bcnf()")
+
+    
+    # Handle empty FD case
+    if not functional_dependencies:
+        return [attributes[:]]
+    
+    return decompose_relation(attributes[:], functional_dependencies)
 
 
 def _read_input_json(path):
